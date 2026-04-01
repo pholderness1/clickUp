@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Legacy User Testing</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+
+<style>
+body { font-family: sans-serif; padding: 20px; }
+button { margin-right: 8px; padding: 8px 14px; cursor: pointer; }
+.mermaid svg { border: 1px solid #ddd; background: #fafafa; }
+</style>
+</head>
+<body>
+
+<h2>Legacy Users Baseline</h2>
+
+<div>
+  <button id="play">▶ Play</button>
+  <button id="step">⏭ Step</button>
+  <button id="reset">⟲ Reset</button>
+</div>
+
+<div class="mermaid" id="diagram">
+sequenceDiagram
+  autonumber
+  participant SIS as SIS
+  participant AIC as AIC
+  participant AD as AD
+  participant BL as Business Logic
+
+  note over SIS: SIS not a participant in these test cases
+  note over SIS,AD: SIS is present as system of record context only - not a record source for these tests
+  note over SIS,AD: PREREQUISITE STATE
+  note over AIC,AD: Legacy test accounts exist in AIC with all required attributes<br/>Corresponding AD accounts exist with all required attributes<br/>No link exists between AIC and AD account
+  note over BL: Student_To_AD mapping configured
+  note over AIC,AD: SETUP - Establish link via reconById
+
+  AIC->>BL: REST call - reconById targeting test user(s) via Student_To_AD mapping
+  activate BL
+  BL->>AD: Locate matching AD account by legacy username attributes
+  AD-->>BL: Match confirmed
+  BL->>AIC: Link established between AIC and AD account
+  deactivate BL
+
+  note over AIC,AD: ASSERT - AIC and AD account are now linked before proceeding
+  note over SIS,AD: TEST - Verify expected outcomes
+  note over AIC,AD: CLEANUP - Remove reconById link only, no accounts deleted
+
+  AIC->>AIC: Remove link between AIC and AD account established by reconById
+  AIC->>AD: Clear corresponding linkage attributes on AD account
+  AD-->>AIC: Link removal acknowledged
+
+  note over AIC,AD: Pool user accounts remain intact in both AIC and AD for reuse
+  note over SIS: SIS not a participant in these test cases
+</div>
+
+<script>
+mermaid.initialize({ startOnLoad: true });
+
+let steps = [];
+let timeline;
+let currentStep = 0;
+let linkLine = null;
+
+// Role mapping (participantName => role)
+const roleMap = [
+  { pattern: /^SIS.*$/, role: "external" },
+  { pattern: /^(AIC|AD|SETUP.*|ASSERT.*|CLEANUP.*)$/, role: "core" },
+  { pattern: /^TEST.*$/, role: "testing"}
+];
+
+// Map participant roles from Mermaid labels
+function getRole(text) {
+  const name = text.trim();
+    for (const entry of roleMap) {
+    if (entry.pattern.test(name)) return entry.role;
+  }
+  return "default";
+}
+
+// Determine role for a note based on covered participants
+function getNoteRole(noteEl) {
+  const text = noteEl.textContent;
+  for (const entry of roleMap) {
+    if (entry.pattern.test(text)) return entry.role;
+  }
+  return "default";
+}
+
+// Style participants
+function styleParticipants(svg) {
+  svg.querySelectorAll("text").forEach(t => {
+    const role = getRole(t.textContent);
+    console.log("Role for " + t.textContent + ":" + role);
+    const group = t.closest("g");
+    const rect = group?.querySelector("rect");
+    if (!rect) return;
+
+    if (role === "external") { rect.style.fill="#f5f5f5"; rect.style.stroke="#ccc"; t.style.fill="#888"; console.log("Applying external styling");}
+    if (role === "core") { rect.style.fill="#e3f2fd"; rect.style.stroke="#1e88e5"; }
+    if (role === "testing") { rect.style.fill="#e8f5e9"; rect.style.stroke="#43a047"; }
+  });
+}
+
+// Style notes based on role
+function styleNotes(svg) {
+  svg.querySelectorAll("rect.note").forEach(rect => {
+    // text is typically the next sibling element
+    const text = rect.nextElementSibling?.tagName === "text"
+      ? rect.nextElementSibling
+      : rect.closest("g")?.querySelector("text");
+
+    if (!text) return;
+
+    const role = getNoteRole(text);
+
+    if (role === "external") {
+      rect.style.fill = "#f5f5f5"; rect.style.stroke = "#ccc"; text.style.fill = "#888";
+    }
+    if (role === "core") {
+      rect.style.fill = "#e3f2fd"; rect.style.stroke = "#1e88e5"; text.style.fill = "#1e88e5";
+    }
+    if (role === "testing") {
+      rect.style.fill = "#e8f5e9"; rect.style.stroke = "#43a047"; text.style.fill = "#43a047";
+    }
+  });
+}
+
+// Persistent AIC ↔ AD link
+function createPersistentLink(svg) {
+  const texts = svg.querySelectorAll("text");
+  let aicX, adX;
+  texts.forEach(t => {
+    if (t.textContent.includes("AIC")) aicX = t.getBBox().x + t.getBBox().width/2;
+    if (t.textContent.includes("AD")) adX = t.getBBox().x + t.getBBox().width/2;
+  });
+  const y = 160;
+  linkLine = document.createElementNS("http://www.w3.org/2000/svg","line");
+  linkLine.setAttribute("x1", aicX); linkLine.setAttribute("x2", adX);
+  linkLine.setAttribute("y1", y); linkLine.setAttribute("y2", y);
+  linkLine.setAttribute("stroke", "#ff9800"); linkLine.setAttribute("stroke-width",3);
+  linkLine.style.opacity = 0;
+  svg.appendChild(linkLine);
+}
+
+// Collect messages and notes for step animation
+function collectSteps(svg) {
+  const messages = svg.querySelectorAll(".message, .messageLine0, .messageLine1");
+  const notes = svg.querySelectorAll("rect.note");
+
+  const preShowPatterns = [
+    //SIS not a participant in these test cases/,
+    /^SIS.*$/,
+    /^PRE.*$/,/^Legacy.*$/,/Student_To_AD/
+    // Add more patterns here if needed
+  ];
+
+  // Build the full combined list sorted by Y position
+  const allElements = [...notes, ...messages]
+    .sort((a, b) => a.getBBox().y - b.getBBox().y);
+
+  steps = [];
+
+  allElements.forEach(el => {
+    const container = el.closest("g") ?? el; // use the group as the animation target
+    const text = el.nextElementSibling?.tagName === "text"
+      ? el.nextElementSibling
+      : el.closest("g")?.querySelector("text");
+    const content = text?.textContent ?? el.textContent;
+
+    const isPreShow = preShowPatterns.some(pattern => pattern.test(content));
+
+    if (isPreShow) {
+      gsap.set(container, { opacity: 1, y: 0 }); // immediately visible
+    } else {
+      gsap.set(container, { opacity: 0, y: -10 }); // hidden until animated
+      steps.push(container); // animate the group, not the rect
+    }
+  });
+}
+
+// Highlight BL during activation
+function highlightBL(svg, active, time) {
+  const texts = svg.querySelectorAll("text");
+  texts.forEach(t => {
+    if (t.textContent.includes("Business Logic")) {
+      const rect = t.closest("g")?.querySelector("rect");
+      if (!rect) return;
+      gsap.to(rect, { stroke: active ? "#00c853" : "#43a047", strokeWidth: active ? 4 : 2, duration: 0.3 }, time);
+    }
+  });
+}
+
+// Build timeline for animation
+function buildTimeline(svg) {
+  timeline = gsap.timeline({ paused:true });
+  steps.forEach((el,i) => {
+    const text = el.textContent || "";
+    timeline.to(el, { opacity: 1, y: 0, duration: 0.4 }, i*0.6);
+
+    //if (text.includes("reconById")) highlightBL(svg,true,i*0.6);
+    if (text.includes("Link established")) timeline.to(linkLine, {opacity:1,duration:0.5}, i*0.6);
+    if (text.includes("Remove link")) timeline.to(linkLine, {opacity:0,duration:0.5}, i*0.6);
+    if (text.includes("deactivate BL")) highlightBL(svg,false,i*0.6);
+  });
+}
+
+// Step mode
+function stepForward() { if(currentStep>=steps.length) return; gsap.to(steps[currentStep], {opacity:1,y:0,duration:0.4}); currentStep++; }
+
+// Reset animation
+function reset() {
+  timeline.pause(0); currentStep=0;
+  steps.forEach(el => gsap.set(el, { opacity:0, y:-10 }));
+  if(linkLine) gsap.set(linkLine, {opacity:0});
+}
+
+document.getElementById("play").onclick = () => timeline.play(0);
+document.getElementById("step").onclick = stepForward;
+document.getElementById("reset").onclick = reset;
+
+// After Mermaid renders, style everything and build animation
+setTimeout(() => {
+  const svg = document.querySelector("#diagram svg");
+  styleParticipants(svg);
+  styleNotes(svg);
+  createPersistentLink(svg);
+  collectSteps(svg);
+  buildTimeline(svg);
+}, 600);
+
+</script>
+
+</body>
+</html>
