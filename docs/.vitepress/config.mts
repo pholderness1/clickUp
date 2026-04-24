@@ -12,6 +12,13 @@ export default defineConfig({
     ],
 
     sidebar: [
+      {
+        text: 'flows',
+        items: [
+          //{ text: 'Overview', link: '/flows/' },
+          { text: 'Legacy Users Flow', link: '/flows/legacyUsersFlow' }
+        ]
+      }
     ],
 
     socialLinks: [
