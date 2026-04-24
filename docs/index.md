@@ -6,19 +6,9 @@ hero:
   name: "Shared"
   text: "Helpful info"
   actions:
-    - theme: brand
-      text: Markdown Examples
-      link: /markdown-examples
     - theme: alt
-      text: API Examples
-      link: /api-examples
+      text: Postman
+      link: /ping-aic/postman-service-account-auth
 
-features:
-  - title: Feature A
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature B
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature C
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
 ---
 
