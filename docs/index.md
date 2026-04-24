@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: alt
       text: Postman
-      link: /ping-aic/postman-service-account-auth
+      link: postman-service-account-auth
 
 ---
 
