@@ -4,4 +4,4 @@ title: Legacy Users Flow
 
 ## Legacy Users Flow
 
-[Open interactive version](/shared/flows/legacyUsersFlow.html)
+[Open interactive version](/flows/legacyUsersFlow.html)
